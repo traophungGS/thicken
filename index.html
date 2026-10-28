@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pressure Paint - Dynamic Growth Canvas</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for crisp UI icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        darkBg: '#12131C',
+                        panelBg: '#1E1F2E',
+                        panelHover: '#2A2C3F',
+                        accent: '#6366F1',
+                        accentHover: '#4F46E5',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1E1F2E;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4B5563;
+        }
+        /* Grid background pattern */
+        .canvas-grid-bg {
+            background-size: 20px 20px;
+            background-image: 
+                linear-gradient(to right, rgba(128, 128, 128, 0.15) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(128, 128, 128, 0.15) 1px, transparent 1px);
+        }
+        /* Dynamic Cursor Overlay */
+        #custom-cursor {
+            pointer-events: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            border-radius: 50%;
+            border: 1.5px solid rgba(255, 255, 255, 0.85);
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            transform: translate(-50%, -50%);
+            z-index: 9999;
+            transition: width 0.04s ease-out, height 0.04s ease-out, border-color 0.15s;
+        }
+        /* Range slider styling */
+        input[type=range] {
+            accent-color: #6366F1;
+        }
+    </style>
+</head>
+<body class="bg-darkBg text-gray-200 h-full flex flex-col overflow-hidden select-none">
+
+    <!-- TOP BAR -->
+    <header class="h-14 bg-panelBg border-b border-gray-800 flex items-center justify-between px-4 z-20 shrink-0">
+        <!-- Logo & Branding -->
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <i class="fa-solid font-bold text-white text-lg fa-paintbrush"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base tracking-tight text-white flex items-center gap-2">
+                    Pressure Paint
+                    <span class="text-[10px] uppercase font-semibold tracking-wider bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-500/30">Dynamic</span>
+                </h1>
+            </div>
+        </div>
+
+        <!-- History & View Actions -->
+        <div class="flex items-center space-x-1 sm:space-x-2">
+            <button id="btn-undo" class="p-2 w-9 h-9 rounded-lg text-gray-400 hover:text-white hover:bg-panelHover disabled:opacity-40 disabled:hover:bg-transparent transition" title="Undo (Ctrl+Z)">
+                <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button id="btn-redo" class="p-2 w-9 h-9 rounded-lg text-gray-400 hover:text-white hover:bg-panelHover disabled:opacity-40 disabled:hover:bg-transparent transition" title="Redo (Ctrl+Y)">
+                <i class="fa-solid fa-rotate-right"></i>
+            </button>
+            <div class="h-5 w-px bg-gray-700 mx-1"></div>
+            <button id="btn-zoom-out" class="p-2 w-9 h-9 rounded-lg text-gray-400 hover:text-white hover:bg-panelHover transition" title="Zoom Out">
+                <i class="fa-solid fa-magnifying-glass-minus"></i>
+            </button>
+            <span id="zoom-val" class="text-xs font-mono text-gray-400 w-12 text-center">100%</span>
+            <button id="btn-zoom-in" class="p-2 w-9 h-9 rounded-lg text-gray-400 hover:text-white hover:bg-panelHover transition" title="Zoom In">
+                <i class="fa-solid fa-magnifying-glass-plus"></i>
+            </button>
+            <button id="btn-zoom-reset" class="px-2 py-1 text-xs rounded-lg text-gray-400 hover:text-white hover:bg-panelHover transition" title="Reset Zoom & Pan">
+                Reset
+            </button>
+        </div>
+
+        <!-- Right Side Utility Controls -->
+        <div class="flex items-center space-x-2">
+            <div class="relative inline-block text-left">
+                <button id="btn-bg-toggle" class="flex items-center space-x-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 transition">
+                    <i class="fa-solid fa-border-all"></i>
+                    <span class="hidden sm:inline">Canvas BG</span>
+                </button>
+                <!-- Canvas BG Selector Dropdown -->
+                <div id="bg-dropdown" class="hidden absolute right-0 mt-2 w-36 rounded-xl bg-panelBg border border-gray-700 shadow-2xl py-1 z-50">
+                    <button data-bg="white" class="bg-option-btn w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-panelHover flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-white border border-gray-400"></span> White
+                    </button>
+                    <button data-bg="grid" class="bg-option-btn w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-panelHover flex items-center gap-2">
+                        <i class="fa-solid fa-border-all text-gray-400"></i> Grid Mode
+                    </button>
+                    <button data-bg="dark" class="bg-option-btn w-full text-left px-3 py-1.5 text-xs text-gray-300 hover:bg-panelHover flex items-center gap-2">
+                        <span class="w-3 h-3 rounded-full bg-gray-900 border border-gray-600"></span> Dark Mode
+                    </button>
+                </div>
+            </div>
+
+            <button id="btn-clear" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-trash-can"></i>
+                <span class="hidden sm:inline">Clear</span>
+            </button>
+            
+            <button id="btn-download" class="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i>
+                <span>Export</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN BODY (TOOLBAR + CANVAS + PROPERTIES) -->
+    <div class="flex flex-1 relative overflow-hidden">
+
+        <!-- LEFT TOOLBAR -->
+        <aside class="w-16 bg-panelBg border-r border-gray-800 flex flex-col items-center py-4 space-y-3 z-10 shrink-0">
+            <!-- Tools Group -->
+            <button data-tool="brush" class="tool-btn active w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Brush / Dynamic Pen">
+                <i class="fa-solid fa-pen-nib text-lg"></i>
+            </button>
+            <button data-tool="eraser" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Eraser">
+                <i class="fa-solid fa-eraser text-lg"></i>
+            </button>
+            <button data-tool="bucket" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Fill Bucket">
+                <i class="fa-solid fa-fill-drip text-lg"></i>
+            </button>
+            <button data-tool="eyedropper" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Eyedropper Color Picker">
+                <i class="fa-solid fa-eye-dropper text-lg"></i>
+            </button>
+
+            <div class="w-8 h-px bg-gray-800 my-1"></div>
+
+            <!-- Shape Tools -->
+            <button data-tool="line" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Straight Line">
+                <i class="fa-solid fa-slash text-base"></i>
+            </button>
+            <button data-tool="rectangle" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Rectangle">
+                <i class="fa-regular fa-square text-lg"></i>
+            </button>
+            <button data-tool="circle" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Circle">
+                <i class="fa-regular fa-circle text-lg"></i>
+            </button>
+
+            <div class="w-8 h-px bg-gray-800 my-1"></div>
+
+            <!-- Pan Tool -->
+            <button data-tool="pan" class="tool-btn w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-white hover:bg-panelHover transition relative group" title="Pan Canvas (Spacebar / Hold Middle Click)">
+                <i class="fa-solid fa-hand text-lg"></i>
+            </button>
+        </aside>
+
+        <!-- CENTER CANVAS VIEWPORT -->
+        <main id="canvas-container" class="flex-1 relative bg-darkBg overflow-hidden cursor-crosshair flex items-center justify-center">
+            <!-- Render Target Canvas Wrapper -->
+            <div id="canvas-wrapper" class="relative shadow-2xl transition-transform duration-75">
+                <canvas id="paintCanvas" class="block bg-white rounded-sm"></canvas>
+            </div>
+        </main>
+
+        <!-- RIGHT PROPERTIES & DYNAMIC GROWTH CONTROL PANEL -->
+        <aside class="w-72 bg-panelBg border-l border-gray-800 flex flex-col p-4 space-y-6 z-10 overflow-y-auto shrink-0">
+            
+            <!-- DYNAMIC LINE GROWTH SETTINGS PANEL -->
+            <div class="bg-indigo-950/30 border border-indigo-500/30 rounded-2xl p-4 space-y-4 relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                        <i class="fa-solid fa-wave-square text-indigo-400"></i> Dynamic Thickening
+                    </label>
+                    <!-- Toggle Switch -->
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="growth-toggle" class="sr-only peer" checked>
+                        <div class="w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                </div>
+
+                <p class="text-[11px] text-gray-400 leading-snug">
+                    The longer you continuously draw, the line thickness dynamically increases up to your maximum limit!
+                </p>
+
+                <!-- Dynamic Growth Sliders Container -->
+                <div id="growth-controls-container" class="space-y-3 pt-1">
+                    <!-- Initial / Min Thickness -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-300 font-medium">Initial / Min Size</span>
+                            <span id="val-min-size" class="font-mono text-indigo-400">3 px</span>
+                        </div>
+                        <input type="range" id="input-min-size" min="1" max="50" value="3" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Max Thickness -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-300 font-medium">Max Limit</span>
+                            <span id="val-max-size" class="font-mono text-indigo-400">45 px</span>
+                        </div>
+                        <input type="range" id="input-max-size" min="5" max="150" value="45" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Growth Speed -->
+                    <div>
+                        <div class="flex justify-between text-xs mb-1">
+                            <span class="text-gray-300 font-medium">Growth Speed</span>
+                            <span id="val-growth-speed" class="font-mono text-indigo-400">Smooth / Gradual</span>
+                        </div>
+                        <input type="range" id="input-growth-speed" min="1" max="10" value="3" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLOR SELECTION SECTION -->
+            <div class="space-y-3">
+                <label class="text-xs font-bold uppercase tracking-wider text-gray-400">Color Palette</label>
+                <div class="flex items-center space-x-3">
+                    <!-- Primary Color Picker Trigger -->
+                    <div class="relative group">
+                        <input type="color" id="color-picker" value="#6366F1" class="w-12 h-12 rounded-xl cursor-pointer border-2 border-gray-700 bg-transparent p-0 overflow-hidden">
+                    </div>
+                    <!-- Hex Value Display & Quick Info -->
+                    <div class="flex-1">
+                        <div class="text-xs text-gray-400">Current Color</div>
+                        <div id="hex-display" class="font-mono text-sm font-semibold uppercase text-gray-200">#6366F1</div>
+                    </div>
+                </div>
+
+                <!-- Preset Swatches -->
+                <div class="grid grid-cols-6 gap-2 pt-2">
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #000000;" data-color="#000000"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #ffffff;" data-color="#ffffff"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #ef4444;" data-color="#ef4444"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #f97316;" data-color="#f97316"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #eab308;" data-color="#eab308"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #22c55e;" data-color="#22c55e"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #06b6d4;" data-color="#06b6d4"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #3b82f6;" data-color="#3b82f6"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #6366f1;" data-color="#6366f1"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #a855f7;" data-color="#a855f7"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #ec4899;" data-color="#ec4899"></button>
+                    <button class="swatch-btn w-7 h-7 rounded-lg border border-gray-700 shadow-sm" style="background-color: #78350f;" data-color="#78350f"></button>
+                </div>
+            </div>
+
+            <!-- STROKE STYLE & OPACITY -->
+            <div class="space-y-4 border-t border-gray-800 pt-4">
+                <label class="text-xs font-bold uppercase tracking-wider text-gray-400">Brush & Fill Settings</label>
+                
+                <!-- Opacity Slider -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-gray-300 font-medium">Opacity</span>
+                        <span id="val-opacity" class="font-mono text-gray-400">100%</span>
+                    </div>
+                    <input type="range" id="input-opacity" min="5" max="100" value="100" class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Cap Style -->
+                <div>
+                    <span class="text-xs text-gray-300 font-medium block mb-1.5">Line Cap Style</span>
+                    <div class="grid grid-cols-3 gap-1 bg-gray-900/50 p-1 rounded-xl border border-gray-800">
+                        <button data-cap="round" class="cap-btn active text-xs py-1 rounded-lg text-gray-300 hover:text-white transition font-medium text-center">Round</button>
+                        <button data-cap="square" class="cap-btn text-xs py-1 rounded-lg text-gray-300 hover:text-white transition font-medium text-center">Square</button>
+                        <button data-cap="butt" class="cap-btn text-xs py-1 rounded-lg text-gray-300 hover:text-white transition font-medium text-center">Flat</button>
+                    </div>
+                </div>
+
+                <!-- Shape Fill Toggle (Applies to Rectangle/Circle tools) -->
+                <div class="flex items-center justify-between pt-1">
+                    <span class="text-xs text-gray-300 font-medium">Fill Shapes</span>
+                    <input type="checkbox" id="shape-fill-toggle" class="accent-indigo-500 w-4 h-4 rounded cursor-pointer">
+                </div>
+            </div>
+
+            <!-- HELPFUL TIPS / INSTRUCTIONS -->
+            <div class="mt-auto border-t border-gray-800 pt-4 text-[11px] text-gray-400 space-y-1.5">
+                <div class="font-semibold text-gray-300 flex items-center gap-1.5 mb-1">
+                    <i class="fa-solid fa-lightbulb text-amber-400"></i> How line growth works:
+                </div>
+                <p>• Press and hold to start drawing.</p>
+                <p>• As long as you hold the cursor down, strokes will expand continuously up to the maximum limit.</p>
+                <p>• Releasing the stroke resets thickness back to the initial min size!</p>
+            </div>
+        </aside>
+    </div>
+
+    <!-- CUSTOM FLOATING CURSOR PREVIEW -->
+    <div id="custom-cursor"></div>
+
+    <!-- APPLICATION LOGIC -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CANVAS & CONTEXT INITIALIZATION ---
+            const container = document.getElementById('canvas-container');
+            const wrapper = document.getElementById('canvas-wrapper');
+            const canvas = document.getElementById('paintCanvas');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+            // Default Resolution
+            const CANVAS_WIDTH = 1920;
+            const CANVAS_HEIGHT = 1080;
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+
+            // --- APP STATE ---
+            const state = {
+                currentTool: 'brush', // brush, eraser, bucket, eyedropper, line, rectangle, circle, pan
+                primaryColor: '#6366F1',
+                opacity: 1.0,
+                lineCap: 'round',
+                fillShape: false,
+                
+                // Dynamic Growth Settings
+                growthEnabled: true,
+                minThickness: 3,
+                maxThickness: 45,
+                growthSpeed: 3, // Calibrated slower & smoother growth speed rate
+                currentThickness: 3,
+                
+                // Viewport Transforms (Zoom & Pan)
+                scale: 1.0,
+                panX: 0,
+                panY: 0,
+                isPanning: false,
+                panStartX: 0,
+                panStartY: 0,
+
+                // Drawing States
+                isDrawing: false,
+                startX: 0,
+                startY: 0,
+                lastX: 0,
+                lastY: 0,
+                
+                // Canvas Background Theme
+                bgMode: 'white' // 'white', 'grid', 'dark'
+            };
+
+            // Undo / Redo Stacks (Limit to 25 states for performance)
+            const MAX_HISTORY = 25;
+            let undoStack = [];
+            let redoStack = [];
+            let currentSnapshot = null; // Temporary image snapshot for previewing shape tools
+
+            // --- Dynamic Cursor Setup ---
+            const customCursor = document.getElementById('custom-cursor');
+
+            function updateCursorPosition(e) {
+                customCursor.style.left = `${e.clientX}px`;
+                customCursor.style.top = `${e.clientY}px`;
+            }
+
+            function updateCursorSize() {
+                const effectiveSize = state.currentTool === 'eraser' 
+                    ? Math.max(state.currentThickness, 8) 
+                    : state.currentThickness;
+                const displayDiameter = Math.max(effectiveSize * state.scale, 6);
+                
+                customCursor.style.width = `${displayDiameter}px`;
+                customCursor.style.height = `${displayDiameter}px`;
+                
+                if (state.currentTool === 'eraser') {
+                    customCursor.style.borderColor = 'rgba(239, 68, 68, 0.9)';
+                    customCursor.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+                } else if (state.currentTool === 'eyedropper') {
+                    customCursor.style.borderColor = '#ffffff';
+                    customCursor.style.backgroundColor = 'transparent';
+                } else {
+                    customCursor.style.borderColor = 'rgba(255, 255, 255, 0.9)';
+                    customCursor.style.backgroundColor = `${state.primaryColor}33`; // Hex opacity
+                }
+            }
+
+            // Init Canvas Background
+            function initCanvasBackground() {
+                ctx.save();
+                if (state.bgMode === 'dark') {
+                    ctx.fillStyle = '#12131C';
+                } else {
+                    ctx.fillStyle = '#FFFFFF';
+                }
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.restore();
+                saveState(); // First baseline snapshot
+            }
+
+            // --- UNDO / REDO MANAGEMENT ---
+            function saveState() {
+                // Clear redo stack on new action
+                redoStack = [];
+                if (undoStack.length >= MAX_HISTORY) {
+                    undoStack.shift(); // Drop oldest history entry
+                }
+                undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+                updateHistoryButtons();
+            }
+
+            function undo() {
+                if (undoStack.length > 1) {
+                    redoStack.push(undoStack.pop());
+                    const stateToRestore = undoStack[undoStack.length - 1];
+                    ctx.putImageData(stateToRestore, 0, 0);
+                    updateHistoryButtons();
+                }
+            }
+
+            function redo() {
+                if (redoStack.length > 0) {
+                    const stateToRestore = redoStack.pop();
+                    undoStack.push(stateToRestore);
+                    ctx.putImageData(stateToRestore, 0, 0);
+                    updateHistoryButtons();
+                }
+            }
+
+            function updateHistoryButtons() {
+                document.getElementById('btn-undo').disabled = undoStack.length <= 1;
+                document.getElementById('btn-redo').disabled = redoStack.length === 0;
+            }
+
+            // --- VIEWPORT & TRANSFORM HELPER FUNCTIONS ---
+            function applyTransform() {
+                wrapper.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+                document.getElementById('zoom-val').textContent = `${Math.round(state.scale * 100)}%`;
+                updateCursorSize();
+            }
+
+            // Transform raw client coordinates (pointer event) to internal canvas coordinates
+            function getCanvasCoordinates(e) {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.clientX;
+                const clientY = e.clientY;
+
+                // Account for CSS scale ratio and canvas scale
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            }
+
+            // --- DYNAMIC THICKNESS GROWTH LOOP ---
+            let growthAnimationId = null;
+
+            function startThicknessGrowth() {
+                state.currentThickness = state.minThickness;
+                updateCursorSize();
+
+                if (!state.growthEnabled) return;
+
+                function growStep() {
+                    if (state.isDrawing && state.currentThickness < state.maxThickness) {
+                        // Slower, smoother growth rate calculation
+                        const increment = (state.growthSpeed * 0.025);
+                        state.currentThickness = Math.min(state.maxThickness, state.currentThickness + increment);
+                        updateCursorSize();
+                        growthAnimationId = requestAnimationFrame(growStep);
+                    }
+                }
+                growthAnimationId = requestAnimationFrame(growStep);
+            }
+
+            function stopThicknessGrowth() {
+                if (growthAnimationId) {
+                    cancelAnimationFrame(growthAnimationId);
+                    growthAnimationId = null;
+                }
+                // Reset to baseline initial size for next stroke
+                state.currentThickness = state.minThickness;
+                updateCursorSize();
+            }
+
+            // --- DRAWING LOGIC ---
+            function startDrawing(e) {
+                // Ignore secondary clicks unless panning
+                if (e.button && e.button !== 0 && e.button !== 1) return;
+
+                const coords = getCanvasCoordinates(e);
+
+                // Check for Middle Mouse Click or Pan Tool for Panning
+                if (e.button === 1 || state.currentTool === 'pan') {
+                    state.isPanning = true;
+                    state.panStartX = e.clientX - state.panX;
+                    state.panStartY = e.clientY - state.panY;
+                    container.style.cursor = 'grabbing';
+                    return;
+                }
+
+                // Capture pointer to avoid missing early movement events
+                if (e.pointerId !== undefined && container.setPointerCapture) {
+                    try { container.setPointerCapture(e.pointerId); } catch(err){}
+                }
+
+                state.isDrawing = true;
+                state.startX = coords.x;
+                state.startY = coords.y;
+                state.lastX = coords.x;
+                state.lastY = coords.y;
+
+                // Handle instant click tools
+                if (state.currentTool === 'bucket') {
+                    floodFill(Math.floor(coords.x), Math.floor(coords.y), state.primaryColor);
+                    saveState();
+                    state.isDrawing = false;
+                    return;
+                }
+
+                if (state.currentTool === 'eyedropper') {
+                    pickColor(Math.floor(coords.x), Math.floor(coords.y));
+                    state.isDrawing = false;
+                    return;
+                }
+
+                // Save snapshot for previewing shape tools
+                if (['line', 'rectangle', 'circle'].includes(state.currentTool)) {
+                    currentSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+
+                // Start Dynamic Thickness Growth
+                startThicknessGrowth();
+
+                // Draw initial start point smoothly without gaps
+                if (['brush', 'eraser'].includes(state.currentTool)) {
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.globalAlpha = state.opacity;
+                    
+                    if (state.currentTool === 'eraser') {
+                        ctx.globalCompositeOperation = 'destination-out';
+                        ctx.fillStyle = 'rgba(0,0,0,1)';
+                    } else {
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.fillStyle = state.primaryColor;
+                    }
+
+                    ctx.arc(coords.x, coords.y, state.currentThickness / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            function drawSegment(x1, y1, x2, y2, thickness) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.globalAlpha = state.opacity;
+                ctx.lineCap = state.lineCap;
+                ctx.lineJoin = 'round';
+                ctx.lineWidth = thickness;
+
+                if (state.currentTool === 'eraser') {
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.strokeStyle = 'rgba(0,0,0,1)';
+                } else {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = state.primaryColor;
+                }
+
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+
+                // Draw end cap to ensure continuous gapless joint as thickness grows
+                if (state.lineCap === 'round') {
+                    ctx.beginPath();
+                    ctx.fillStyle = ctx.strokeStyle;
+                    ctx.arc(x2, y2, thickness / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            function draw(e) {
+                updateCursorPosition(e);
+
+                if (state.isPanning) {
+                    state.panX = e.clientX - state.panStartX;
+                    state.panY = e.clientY - state.panStartY;
+                    applyTransform();
+                    return;
+                }
+
+                if (!state.isDrawing) return;
+
+                const coords = getCanvasCoordinates(e);
+
+                // --- FREEHAND BRUSH / ERASER TOOL ---
+                if (['brush', 'eraser'].includes(state.currentTool)) {
+                    drawSegment(state.lastX, state.lastY, coords.x, coords.y, state.currentThickness);
+                    state.lastX = coords.x;
+                    state.lastY = coords.y;
+                }
+
+                // --- SHAPE PREVIEW RENDERING ---
+                else if (['line', 'rectangle', 'circle'].includes(state.currentTool)) {
+                    // Restore clean snapshot before drawing dynamic preview vector
+                    if (currentSnapshot) {
+                        ctx.putImageData(currentSnapshot, 0, 0);
+                    }
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.globalAlpha = state.opacity;
+                    ctx.lineWidth = state.currentThickness;
+                    ctx.strokeStyle = state.primaryColor;
+                    ctx.fillStyle = state.primaryColor;
+                    ctx.lineCap = state.lineCap;
+
+                    if (state.currentTool === 'line') {
+                        ctx.moveTo(state.startX, state.startY);
+                        ctx.lineTo(coords.x, coords.y);
+                        ctx.stroke();
+                    } 
+                    else if (state.currentTool === 'rectangle') {
+                        const width = coords.x - state.startX;
+                        const height = coords.y - state.startY;
+                        if (state.fillShape) {
+                            ctx.fillRect(state.startX, state.startY, width, height);
+                        }
+                        ctx.strokeRect(state.startX, state.startY, width, height);
+                    } 
+                    else if (state.currentTool === 'circle') {
+                        const radius = Math.hypot(coords.x - state.startX, coords.y - state.startY);
+                        ctx.arc(state.startX, state.startY, radius, 0, 2 * Math.PI);
+                        if (state.fillShape) {
+                            ctx.fill();
+                        }
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            function stopDrawing(e) {
+                if (e && e.pointerId !== undefined && container.releasePointerCapture) {
+                    try { container.releasePointerCapture(e.pointerId); } catch(err){}
+                }
+
+                if (state.isPanning) {
+                    state.isPanning = false;
+                    container.style.cursor = state.currentTool === 'pan' ? 'grab' : 'crosshair';
+                    return;
+                }
+
+                if (state.isDrawing) {
+                    state.isDrawing = false;
+                    stopThicknessGrowth();
+                    saveState(); // Record action into history
+                }
+            }
+
+            // --- FLOOD FILL / BUCKET TOOL ALGORITHM ---
+            function floodFill(startX, startY, hexColor) {
+                const targetColor = ctx.getImageData(startX, startY, 1, 1).data;
+                const fillColorRgb = hexToRgb(hexColor);
+
+                // If same color, skip
+                if (colorsMatch(targetColor, fillColorRgb, 10)) return;
+
+                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imgData.data;
+                const pixelStack = [[startX, startY]];
+                const width = canvas.width;
+                const height = canvas.height;
+
+                while (pixelStack.length > 0) {
+                    const [x, y] = pixelStack.pop();
+                    let currentPos = (y * width + x) * 4;
+
+                    while (y >= 0 && matchTargetColor(data, currentPos, targetColor)) {
+                        y--;
+                        currentPos -= width * 4;
+                    }
+                    currentPos += width * 4;
+                    y++;
+
+                    let reachLeft = false;
+                    let reachRight = false;
+
+                    while (y < height && matchTargetColor(data, currentPos, targetColor)) {
+                        colorPixel(data, currentPos, fillColorRgb, state.opacity);
+
+                        if (x > 0) {
+                            if (matchTargetColor(data, currentPos - 4, targetColor)) {
+                                if (!reachLeft) {
+                                    pixelStack.push([x - 1, y]);
+                                    reachLeft = true;
+                                }
+                            } else if (reachLeft) {
+                                reachLeft = false;
+                            }
+                        }
+
+                        if (x < width - 1) {
+                            if (matchTargetColor(data, currentPos + 4, targetColor)) {
+                                if (!reachRight) {
+                                    pixelStack.push([x + 1, y]);
+                                    reachRight = true;
+                                }
+                            } else if (reachRight) {
+                                reachRight = false;
+                            }
+                        }
+
+                        y++;
+                        currentPos += width * 4;
+                    }
+                }
+                ctx.putImageData(imgData, 0, 0);
+            }
+
+            function matchTargetColor(data, pos, targetColor) {
+                const r = data[pos];
+                const g = data[pos + 1];
+                const b = data[pos + 2];
+                const a = data[pos + 3];
+
+                return Math.abs(r - targetColor[0]) < 20 &&
+                       Math.abs(g - targetColor[1]) < 20 &&
+                       Math.abs(b - targetColor[2]) < 20 &&
+                       Math.abs(a - targetColor[3]) < 20;
+            }
+
+            function colorPixel(data, pos, rgb, opacity) {
+                data[pos] = rgb.r;
+                data[pos + 1] = rgb.g;
+                data[pos + 2] = rgb.b;
+                data[pos + 3] = Math.round(opacity * 255);
+            }
+
+            function colorsMatch(a, b, tolerance = 0) {
+                return Math.abs(a[0] - b.r) <= tolerance &&
+                       Math.abs(a[1] - b.g) <= tolerance &&
+                       Math.abs(a[2] - b.b) <= tolerance;
+            }
+
+            function hexToRgb(hex) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                return result ? {
+                    r: parseInt(result[1], 16),
+                    g: parseInt(result[2], 16),
+                    b: parseInt(result[3], 16)
+                } : { r: 0, g: 0, b: 0 };
+            }
+
+            // --- EYEDROPPER COLOR PICKER ---
+            function pickColor(x, y) {
+                const pixel = ctx.getImageData(x, y, 1, 1).data;
+                const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
+                state.primaryColor = hex;
+                document.getElementById('color-picker').value = hex;
+                document.getElementById('hex-display').textContent = hex.toUpperCase();
+                updateCursorSize();
+                
+                // Switch back to brush after picking color
+                switchTool('brush');
+            }
+
+            // --- TOOL SWITCHING ---
+            function switchTool(toolName) {
+                state.currentTool = toolName;
+                document.querySelectorAll('.tool-btn').forEach(btn => {
+                    if (btn.dataset.tool === toolName) {
+                        btn.classList.add('bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-600/30');
+                        btn.classList.remove('text-gray-400', 'hover:bg-panelHover');
+                    } else {
+                        btn.classList.remove('bg-indigo-600', 'text-white', 'shadow-md', 'shadow-indigo-600/30');
+                        btn.classList.add('text-gray-400');
+                    }
+                });
+
+                container.style.cursor = toolName === 'pan' ? 'grab' : 'crosshair';
+                updateCursorSize();
+            }
+
+            // --- UI & EVENT LISTENERS ---
+
+            // Tool selection
+            document.querySelectorAll('.tool-btn').forEach(btn => {
+                btn.addEventListener('click', () => switchTool(btn.dataset.tool));
+            });
+
+            // Canvas Pointer Event Bindings for gapless early move capture
+            container.addEventListener('pointerdown', startDrawing);
+            window.addEventListener('pointermove', draw);
+            window.addEventListener('pointerup', stopDrawing);
+            window.addEventListener('pointercancel', stopDrawing);
+
+            // Custom Cursor visibility
+            container.addEventListener('mouseenter', () => customCursor.style.opacity = '1');
+            container.addEventListener('mouseleave', () => customCursor.style.opacity = '0');
+
+            // Dynamic Growth UI Controls
+            const growthToggle = document.getElementById('growth-toggle');
+            const minSizeInput = document.getElementById('input-min-size');
+            const maxSizeInput = document.getElementById('input-max-size');
+            const speedInput = document.getElementById('input-growth-speed');
+
+            growthToggle.addEventListener('change', (e) => {
+                state.growthEnabled = e.target.checked;
+                document.getElementById('growth-controls-container').style.opacity = state.growthEnabled ? '1' : '0.4';
+                document.getElementById('growth-controls-container').style.pointerEvents = state.growthEnabled ? 'auto' : 'none';
+            });
+
+            minSizeInput.addEventListener('input', (e) => {
+                state.minThickness = parseInt(e.target.value);
+                if (state.minThickness > state.maxThickness) {
+                    state.maxThickness = state.minThickness;
+                    maxSizeInput.value = state.maxThickness;
+                    document.getElementById('val-max-size').textContent = `${state.maxThickness} px`;
+                }
+                state.currentThickness = state.minThickness;
+                document.getElementById('val-min-size').textContent = `${state.minThickness} px`;
+                updateCursorSize();
+            });
+
+            maxSizeInput.addEventListener('input', (e) => {
+                state.maxThickness = parseInt(e.target.value);
+                if (state.maxThickness < state.minThickness) {
+                    state.minThickness = state.maxThickness;
+                    minSizeInput.value = state.minThickness;
+                    document.getElementById('val-min-size').textContent = `${state.minThickness} px`;
+                }
+                document.getElementById('val-max-size').textContent = `${state.maxThickness} px`;
+            });
+
+            speedInput.addEventListener('input', (e) => {
+                state.growthSpeed = parseInt(e.target.value);
+                const labels = ['Ultra Slow', 'Very Slow', 'Smooth / Gradual', 'Gentle', 'Moderate', 'Medium', 'Fast', 'Rapid', 'Swift', 'Max Speed'];
+                document.getElementById('val-growth-speed').textContent = labels[state.growthSpeed - 1];
+            });
+
+            // Color Picker & Swatches
+            const colorPicker = document.getElementById('color-picker');
+            colorPicker.addEventListener('input', (e) => {
+                state.primaryColor = e.target.value;
+                document.getElementById('hex-display').textContent = e.target.value.toUpperCase();
+                updateCursorSize();
+            });
+
+            document.querySelectorAll('.swatch-btn').forEach(swatch => {
+                swatch.addEventListener('click', () => {
+                    const color = swatch.dataset.color;
+                    state.primaryColor = color;
+                    colorPicker.value = color;
+                    document.getElementById('hex-display').textContent = color.toUpperCase();
+                    updateCursorSize();
+                });
+            });
+
+            // Opacity & Cap Style
+            document.getElementById('input-opacity').addEventListener('input', (e) => {
+                state.opacity = parseInt(e.target.value) / 100;
+                document.getElementById('val-opacity').textContent = `${e.target.value}%`;
+            });
+
+            document.querySelectorAll('.cap-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.cap-btn').forEach(b => b.classList.remove('bg-indigo-600', 'text-white'));
+                    btn.classList.add('bg-indigo-600', 'text-white');
+                    state.lineCap = btn.dataset.cap;
+                });
+            });
+
+            document.getElementById('shape-fill-toggle').addEventListener('change', (e) => {
+                state.fillShape = e.target.checked;
+            });
+
+            // Zoom & Pan Buttons
+            document.getElementById('btn-zoom-in').addEventListener('click', () => {
+                state.scale = Math.min(state.scale * 1.2, 5.0);
+                applyTransform();
+            });
+
+            document.getElementById('btn-zoom-out').addEventListener('click', () => {
+                state.scale = Math.max(state.scale / 1.2, 0.2);
+                applyTransform();
+            });
+
+            document.getElementById('btn-zoom-reset').addEventListener('click', () => {
+                state.scale = 1.0;
+                state.panX = 0;
+                state.panY = 0;
+                applyTransform();
+            });
+
+            // Canvas Zoom via Wheel
+            container.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+                state.scale = Math.min(Math.max(0.2, state.scale * zoomFactor), 5.0);
+                applyTransform();
+            }, { passive: false });
+
+            // Undo / Redo Click Handlers
+            document.getElementById('btn-undo').addEventListener('click', undo);
+            document.getElementById('btn-redo').addEventListener('click', redo);
+
+            // Canvas Background Switcher Dropdown
+            const bgBtn = document.getElementById('btn-bg-toggle');
+            const bgDropdown = document.getElementById('bg-dropdown');
+
+            bgBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                bgDropdown.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', () => bgDropdown.classList.add('hidden'));
+
+            document.querySelectorAll('.bg-option-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.bgMode = btn.dataset.bg;
+                    container.className = 'flex-1 relative overflow-hidden cursor-crosshair flex items-center justify-center ';
+                    if (state.bgMode === 'grid') {
+                        container.classList.add('canvas-grid-bg', 'bg-darkBg');
+                    } else if (state.bgMode === 'dark') {
+                        container.classList.add('bg-gray-950');
+                    } else {
+                        container.classList.add('bg-gray-900');
+                    }
+                });
+            });
+
+            // Clear Canvas Button
+            document.getElementById('btn-clear').addEventListener('click', () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                initCanvasBackground();
+            });
+
+            // Export Canvas Image Download
+            document.getElementById('btn-download').addEventListener('click', () => {
+                const link = document.createElement('a');
+                link.download = `dynamic-growth-artwork-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+
+            // Keyboard Shortcuts
+            window.addEventListener('keydown', (e) => {
+                if (e.ctrlKey || e.metaKey) {
+                    if (e.key === 'z') {
+                        e.preventDefault();
+                        if (e.shiftKey) redo();
+                        else undo();
+                    } else if (e.key === 'y') {
+                        e.preventDefault();
+                        redo();
+                    }
+                } else if (e.key === ' ') {
+                    if (state.currentTool !== 'pan') {
+                        switchTool('pan');
+                    }
+                } else if (e.key === 'b') {
+                    switchTool('brush');
+                } else if (e.key === 'e') {
+                    switchTool('eraser');
+                }
+            });
+
+            // Initialize App
+            switchTool('brush');
+            initCanvasBackground();
+        });
+    </script>
+</body>
+</html>
